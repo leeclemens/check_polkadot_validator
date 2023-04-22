@@ -1,7 +1,8 @@
 # Checks for Polkadot/Kusama Validators
 ## Status
 ![License](https://img.shields.io/github/license/leeclemens/check_polkadot_validator)
-![Version](https://img.shields.io/github/issues-raw/leeclemens/check_polkadot_validator)
+![Issues](https://img.shields.io/github/issues-raw/leeclemens/check_polkadot_validator)
+![Pull Requests](https://img.shields.io/github/issues-pr/leeclemens/check_polkadot_validator)
 ### main
 ![Linting main](https://github.com/leeclemens/check_polkadot_validator/actions/workflows/linters.yml/badge.svg?branch=main)
 [![Codacy Badge](https://app.codacy.com/project/badge/Grade/54641d02ffdd4a819cfd221b8a3e6c86?branch=main)](https://app.codacy.com/gh/leeclemens/check_polkadot_validator/dashboard?utm_source=gh&utm_medium=referral&utm_content=&utm_campaign=Badge_grade)
