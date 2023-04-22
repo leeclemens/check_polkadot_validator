@@ -1,5 +1,6 @@
 # Checks for Polkadot/Kusama Validators
 ## Status
+![License](https://img.shields.io/github/license/leeclemens/check_polkadot_validator)
 ![Version](https://img.shields.io/github/issues-raw/leeclemens/check_polkadot_validator)
 ### main
 ![Linting main](https://github.com/leeclemens/check_polkadot_validator/actions/workflows/linters.yml/badge.svg?branch=main)
