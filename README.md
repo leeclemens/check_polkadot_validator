@@ -40,4 +40,3 @@ check_polkadot_validator_active -s localhost -p 9944 \
   --best-timeout 14 \
   --finalized-timeout 28
 ```
-
