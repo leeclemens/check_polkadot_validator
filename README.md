@@ -60,12 +60,15 @@ check_polkadot_validator_active -s localhost -p 9944 \
 ##### Compare your block heights with another node
 
 You can also specify another node to compare block numbers with.
+The difference will use the same `--max-distance` thresholds.
+
 **Warning**: This can lead to false positives and false negatives!
-But it may be useful in some circumstances, so it is available.
+It may be useful in some circumstances, so it is available.
 
 By specifying `--compare-to-uri`, the best and finalized block numbers from the
 provided source will be used (as opposed to watching the node's block numbers
-until they increase within the defined timeouts).
+until they increase within the defined timeout periods).
+
 For example, if your node is working but the provided node is not increasing,
 it will raise an alert.
 Also, if your node and the provided node are both not increasing,
