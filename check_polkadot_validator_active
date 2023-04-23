@@ -16,6 +16,7 @@ Nagios/Icinga2 style check in an attempt to verify a validator's state in a more
 import argparse
 import asyncio
 import json
+import random
 import sys
 import time
 import traceback
@@ -64,6 +65,9 @@ PERF_FINALIZED_INCREASE_TIME = 'finalized_increased'
 
 WS_MSG_METHOD_KEY = 'method'
 WS_MSG_PARAMS_KEY = 'params'
+
+MAX_BACKOFF_MS = 1500
+BASE_BACKOFF_MS = 200
 
 
 def _set_return(this_return: int):
@@ -264,17 +268,15 @@ async def _check_block_increasing(args, block_type: str):
 
 async def _do_check_block_increasing(args, block_type, block_num_func,
                                      increase_timeout, perf_label, perf_units):
-    # Enhance: Backoff algorithm? Median should be 3 seconds?
-    # sleep_time = 0.5
-    sleep_time = 2
     initial_block_num = await block_num_func(args)
     if args.verbose:
         print(f'Checking {block_type} blocks. Initial: {initial_block_num}.')
     initial_block_time = time.time()
     new_block_time = initial_block_time
     block_increase_elapsed = 0
+    iteration_count = 0
     while block_increase_elapsed < increase_timeout:
-        time.sleep(sleep_time / 2)
+        time.sleep(__get_backoff_time(iteration_count))
         new_block_num = await block_num_func(args)
         if args.verbose:
             print(f'Checking {block_type} blocks. Found: {new_block_num}.')
@@ -293,6 +295,16 @@ async def _do_check_block_increasing(args, block_type, block_num_func,
                        STATUS_CRITICAL)
         block_increase_elapsed = 'inf'
     _update_perf_stats(perf_label, f'{block_increase_elapsed}{perf_units}')
+
+
+def __get_backoff_time(iteration_count: int) -> float:
+    """Calculate a backoff time using Decorrelated Jitter.
+    Unit of time is ms and then convert to seconds as a float
+    """
+    temp = min(MAX_BACKOFF_MS, BASE_BACKOFF_MS * 2 ** iteration_count)
+    sleep = temp / 2 + random.randint(0, int(temp / 2))
+    sleep = min(MAX_BACKOFF_MS, random.randint(BASE_BACKOFF_MS, int(sleep * 3)))
+    return sleep / 1000
 
 
 def _exit():
