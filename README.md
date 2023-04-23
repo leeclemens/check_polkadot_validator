@@ -1,4 +1,3 @@
-
 # Checks for Polkadot/Kusama Validators
 
 ## Status
@@ -19,37 +18,39 @@
 
 ## Description
 
-A collection of checks for your validators that are Nagios/Icinga2 compatible, or can be run in an idempotent manner.
-The primary goal was to achieve an idempotent health check for determining the status of a validator.
+A collection of checks for your validators that are Nagios/Icinga2 compatible,
+or can be run in an idempotent manner. The primary goal was to achieve an
+idempotent health check for determining the status of a validator.
 
-Some challenges include testing for the advancement in block height. This infers passage of time,
-so it is difficult to check idempotently.
+Some challenges include testing for the advancement in block height.
+This infers passage of time, so it is difficult to check idempotently.
 
-### Requirements
+## Requirements
 
 * Python 3.8+
-* Python websockets package
+* PyPI websockets package
   * pip install websockets
-  * Debian/Ubuntu, RedHat/CentOS/Fedora
-    * python3-websockets
+* Debian/Ubuntu, RedHat/CentOS/Fedora package
+  * python3-websockets
 
 ## Check Validator is Active
 
 ### check_polkadot_validator_active
 
 Perform a series of checks to confirm the validator is "active". Some checks include:
-- Currently syncing
-- Number of peers
-- Block height distance is too great
-- Block numbers are not increasing over time
+
+* Currently syncing
+* Number of peers
+* Block height distance is too great
+* Block numbers are not increasing over time
 
 #### Example
 
-```
+```bash
 check_polkadot_validator_active -s localhost -p 9944 \
   --min-peers 5 \
-  --max-distance-warn 4 \
-  --max-distance-crit 6 \
+  --max-distance-warn 5 \
+  --max-distance-crit 8 \
   --best-timeout 14 \
   --finalized-timeout 28
 ```
