@@ -44,7 +44,9 @@ Perform a series of checks to confirm the validator is "active". Some checks inc
 * Block height distance is too great
 * Block numbers are not increasing over time
 
-#### Example
+#### Examples
+
+##### Watch for block heights to increase
 
 ```bash
 check_polkadot_validator_active -s localhost -p 9944 \
@@ -53,4 +55,26 @@ check_polkadot_validator_active -s localhost -p 9944 \
   --max-distance-crit 8 \
   --best-timeout 14 \
   --finalized-timeout 28
+```
+
+##### Compare your block heights with another node
+
+You can also specify another node to compare block numbers with.
+**Warning**: This can lead to false positives and false negatives!
+But it may be useful in some circumstances, so it is available.
+
+By specifying `--compare-to-uri`, the best and finalized block numbers from the
+provided source will be used (as opposed to watching the node's block numbers
+until they increase within the defined timeouts).
+For example, if your node is working but the provided node is not increasing,
+it will raise an alert.
+Also, if your node and the provided node are both not increasing,
+it will *not* alert to an issue.
+
+```bash
+check_polkadot_validator_active -s localhost -p 9944 \
+  --min-peers 5 \
+  --max-distance-warn 5 \
+  --max-distance-crit 8 \
+  --compare-to-uri wss://kusama-rpc.polkadot.io
 ```

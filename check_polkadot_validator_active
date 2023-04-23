@@ -60,6 +60,8 @@ RETURN_PERF_STATS = {}
 PERF_IS_SYNCING_LABEL = 'is_syncing'
 PERF_NUM_PEERS_LABEL = 'num_peers'
 PERF_BLOCK_HEIGHT_DIFFERENCE_LABEL = 'height_diff'
+PERF_BEST_COMPARE_TO_DIFFERENCE = 'best_compare_diff'
+PERF_FINALIZED_COMPARE_TO_DIFFERENCE = 'finalized_compare_diff'
 PERF_BEST_INCREASE_TIME = 'best_increased'
 PERF_FINALIZED_INCREASE_TIME = 'finalized_increased'
 
@@ -134,17 +136,16 @@ def _build_ws_message(update_dict) -> dict:
     return empty_msg
 
 
-async def _connect_ws(server: str,
-                      port: int,
+async def _connect_ws(uri: str,
                       message_dict: dict,
                       args,
                       return_result_dict: bool = True) -> dict:
     try:
-        async with ws_connect(f'ws://{server}:{port}') as websocket:
+        async with ws_connect(uri) as websocket:
             await websocket.send(json.dumps(message_dict))
             response = await websocket.recv()
             if args.verbose:
-                print(f'Message: {message_dict} returned {str(response)}')
+                print(f'URI: {uri}. Message: {message_dict} returned {str(response)}')
             response_dict = json.loads(response)
             if return_result_dict:
                 return response_dict['result']
@@ -157,45 +158,39 @@ async def _connect_ws(server: str,
 
 
 async def _is_syncing(args) -> bool:
-    return (await _connect_ws(args.server,
-                              args.port,
+    return (await _connect_ws(args.node_uri,
                               _build_ws_message({WS_MSG_METHOD_KEY: 'system_health'}),
                               args))['isSyncing']
 
 
 async def _get_num_peers(args) -> int:
-    return (await _connect_ws(args.server,
-                              args.port,
+    return (await _connect_ws(args.node_uri,
                               _build_ws_message({WS_MSG_METHOD_KEY: 'system_health'}),
                               args))['peers']
 
 
-async def _get_best_head_number(args) -> str:
-    return (await _connect_ws(args.server,
-                              args.port,
+async def _get_best_head_number(args, connect_node: bool = True) -> str:
+    return (await _connect_ws(args.node_uri if connect_node else args.compare_to_uri,
                               _build_ws_message({WS_MSG_METHOD_KEY: 'chain_getHeader'}),
                               args))['number']
 
 
-async def _get_finalized_head(args) -> str:
-    return (await _connect_ws(args.server,
-                              args.port,
+async def _get_finalized_head(args, connect_node: bool = True) -> str:
+    return (await _connect_ws(args.node_uri if connect_node else args.compare_to_uri,
                               _build_ws_message({WS_MSG_METHOD_KEY: 'chain_getFinalizedHead'}),
                               args,
                               return_result_dict=False))['result']
 
 
-async def _get_finalized_head_number(args) -> str:
-    finalized_head = await _get_finalized_head(args)
-    return (await _connect_ws(args.server,
-                              args.port,
+async def _get_finalized_head_number(args, connect_node: bool = True) -> str:
+    finalized_head = await _get_finalized_head(args, connect_node=connect_node)
+    return (await _connect_ws(args.node_uri if connect_node else args.compare_to_uri,
                               _build_ws_message({WS_MSG_METHOD_KEY: 'chain_getHeader',
                                                  WS_MSG_PARAMS_KEY: [finalized_head]}),
                               args))['number']
 
 
 def _calculate_block_number_distance(best_block_num: str, finalized_block_num: str) -> int:
-    # Enhance: Can finalized ever be higher than best? Should any negative value be CRITICAL?
     return abs(int(best_block_num, 16) - int(finalized_block_num, 16))
 
 
@@ -229,12 +224,12 @@ async def _check_block_height_difference(args):
     block_height_difference = _calculate_block_number_distance(best_head_block_number,
                                                                finalized_head_block_number)
     if block_height_difference >= args.max_height_distance_crit:
-        _update_status(f'Block Heights:'
+        _update_status(f'Node Block Heights:'
                        f' Best: {best_head_block_number}.'
                        f' Finalized: {finalized_head_block_number}.',
                        STATUS_CRITICAL)
     elif block_height_difference >= args.max_height_distance_warn:
-        _update_status(f'Block Heights:'
+        _update_status(f'Node Block Heights:'
                        f' Best: {best_head_block_number}.'
                        f' Finalized: {finalized_head_block_number}.',
                        STATUS_WARNING)
@@ -242,6 +237,45 @@ async def _check_block_height_difference(args):
         _set_return(STATUS_OK)
     _update_perf_stats(PERF_BLOCK_HEIGHT_DIFFERENCE_LABEL,
                        f'{block_height_difference}{_get_perf_block_height_limits(args)}')
+
+
+async def _check_block_compare_to(args, block_type: str):
+    if block_type == BLOCK_TYPE_BEST:
+        block_num_func = _get_best_head_number
+        perf_label = PERF_BEST_COMPARE_TO_DIFFERENCE
+    elif block_type == BLOCK_TYPE_FINALIZED:
+        block_num_func = _get_finalized_head_number
+        perf_label = PERF_FINALIZED_COMPARE_TO_DIFFERENCE
+    else:
+        print(f'Code error, unknown block_type: {block_type}')
+        sys.exit(STATUS_UNKNOWN)
+    await _do_check_block_compare_to(args,
+                                     block_type,
+                                     block_num_func,
+                                     perf_label)
+
+
+async def _do_check_block_compare_to(args, block_type, block_num_func, perf_label):
+    if args.verbose:
+        print(f'Comparing {block_type} block height to {args.compare_to_uri}')
+    compare_block_number = await block_num_func(args, connect_node=False)
+    node_block_number = await block_num_func(args, connect_node=True)
+    block_height_difference = _calculate_block_number_distance(compare_block_number,
+                                                               node_block_number)
+    if block_height_difference >= args.max_height_distance_crit:
+        _update_status(f'Compare To Block Heights ({block_type}):'
+                       f' Compare To: {compare_block_number}.'
+                       f' Node: {node_block_number}.',
+                       STATUS_CRITICAL)
+    elif block_height_difference >= args.max_height_distance_warn:
+        _update_status(f'Compare To Block Heights ({block_type}):'
+                       f' Compare To: {compare_block_number}.'
+                       f' Node: {node_block_number}.',
+                       STATUS_WARNING)
+    else:
+        _set_return(STATUS_OK)
+    _update_perf_stats(
+        perf_label, f'{block_height_difference}{_get_perf_block_height_limits(args)}')
 
 
 async def _check_block_increasing(args, block_type: str):
@@ -322,8 +356,12 @@ async def run(args):
     await _check_is_syncing(args)
     await _check_num_peers(args)
     await _check_block_height_difference(args)
-    await _check_block_increasing(args, BLOCK_TYPE_BEST)
-    await _check_block_increasing(args, BLOCK_TYPE_FINALIZED)
+    if args.compare_to_uri:
+        await _check_block_compare_to(args, BLOCK_TYPE_BEST)
+        await _check_block_compare_to(args, BLOCK_TYPE_FINALIZED)
+    else:
+        await _check_block_increasing(args, BLOCK_TYPE_BEST)
+        await _check_block_increasing(args, BLOCK_TYPE_FINALIZED)
     _exit()
 
 
@@ -344,6 +382,11 @@ def parse_args():
                         default=DEFAULT_WS_PORT,
                         help=f'WS port to connect to.'
                              f' Default: {DEFAULT_WS_PORT}')
+    parser.add_argument('--use-tls',
+                        dest='use_tls',
+                        action='store_true',
+                        help='use TLS when connecting to node <server>.'
+                             ' Default: false (use ws://)')
     parser.add_argument('--warn-is-syncing',
                         dest='warn_is_syncing',
                         action='store_true',
@@ -379,6 +422,13 @@ def parse_args():
                         default=DEFAULT_FINALIZED_INCREASE_TIMEOUT,
                         help=f'finalized block increase timeout (in seconds).'
                              f' Default: {DEFAULT_FINALIZED_INCREASE_TIMEOUT}')
+    parser.add_argument('--compare-to-uri', type=str,
+                        required=False,
+                        dest='compare_to_uri',
+                        default=None,
+                        help='node to compare best and finalized block heights to.'
+                             ' Default: Use --best-timeout and --finalized-timeout'
+                             ' and connect to ws://<server>:<port>')
     parser.add_argument('-v', '--verbose',
                         dest='verbose',
                         action='store_true',
@@ -387,6 +437,16 @@ def parse_args():
     if args.max_height_distance_warn > args.max_height_distance_crit:
         print('Max Height Distance warning must be greater than critical')
         sys.exit(STATUS_CRITICAL)
+    # build a full URI to use for node <server>
+    args.node_uri = f'ws{"s" if args.use_tls else ""}://{args.server}:{args.port}'
+    # check if ignored arguments are provided
+    if args.compare_to_uri:
+        if args.best_block_timeout != DEFAULT_BEST_INCREASE_TIMEOUT:
+            print('--best-timeout was set but will be ignored'
+                  ' since --compare-to-uri is also set')
+        if args.finalized_block_timeout != DEFAULT_FINALIZED_INCREASE_TIMEOUT:
+            print('--finalized-timeout was set but will be ignored'
+                  ' since --compare-to-uri is also set')
     return args
 
 
