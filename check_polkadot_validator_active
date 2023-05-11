@@ -442,7 +442,7 @@ def parse_args():
                         help='verbose output')
     args = parser.parse_args()
     if args.max_height_distance_warn > args.max_height_distance_crit:
-        print('Max Height Distance warning must be greater than critical')
+        print('Max Height Distance warning must be less than critical')
         sys.exit(STATUS_CRITICAL)
     # build a full URI to use for node <server>
     args.node_uri = f'ws{"s" if args.use_tls else ""}://{args.server}:{args.port}'
