@@ -224,19 +224,26 @@ async def _check_block_height_difference(args):
     block_height_difference = _calculate_block_number_distance(best_head_block_number,
                                                                finalized_head_block_number)
     if block_height_difference >= args.max_height_distance_crit:
-        _update_status(f'Node Block Heights:'
-                       f' Best: {best_head_block_number}.'
-                       f' Finalized: {finalized_head_block_number}.',
+        _update_status(__get_block_height_difference_message(best_head_block_number,
+                                                             finalized_head_block_number),
                        STATUS_CRITICAL)
     elif block_height_difference >= args.max_height_distance_warn:
-        _update_status(f'Node Block Heights:'
-                       f' Best: {best_head_block_number}.'
-                       f' Finalized: {finalized_head_block_number}.',
+        _update_status(__get_block_height_difference_message(best_head_block_number,
+                                                             finalized_head_block_number),
                        STATUS_WARNING)
     else:
         _set_return(STATUS_OK)
     _update_perf_stats(PERF_BLOCK_HEIGHT_DIFFERENCE_LABEL,
                        f'{block_height_difference}{_get_perf_block_height_limits(args)}')
+
+
+def __get_block_height_difference_message(best_number: str,
+                                          finalized_number: str) -> str:
+    # Generate detailed message used when block height difference is not ok
+    return (f'Node Block Heights:'
+            f' Best: {best_number} ({int(best_number, 16)}).'
+            f' Finalized: {finalized_number} ({int(finalized_number, 16)}).'
+            f' Diff: {_calculate_block_number_distance(best_number, finalized_number)}.')
 
 
 async def _check_block_compare_to(args, block_type: str):
