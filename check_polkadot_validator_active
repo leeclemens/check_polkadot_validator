@@ -334,7 +334,8 @@ async def _do_check_block_increasing(args, block_type, block_num_func,
         _update_status(f'{block_type} block number did not increase after'
                        f' {block_increase_elapsed}s',
                        STATUS_CRITICAL)
-        block_increase_elapsed = 'inf'
+        block_increase_elapsed = ('inf' if not args.fake_increasing_perfdata
+                                  else (increase_timeout * 2.0))
     _update_perf_stats(perf_label, f'{block_increase_elapsed}{perf_units}')
 
 
@@ -436,6 +437,11 @@ def parse_args():
                         help='node to compare best and finalized block heights to.'
                              ' Default: Use --best-timeout and --finalized-timeout'
                              ' and connect to ws://<server>:<port>')
+    parser.add_argument('--fake-increasing-perfdata',
+                        dest='fake_increasing_perfdata',
+                        action='store_true',
+                        help='use 2x timeout value instead of inf.'
+                             ' Default: inf when timeout occurs')
     parser.add_argument('-v', '--verbose',
                         dest='verbose',
                         action='store_true',
