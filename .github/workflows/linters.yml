@@ -16,14 +16,17 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        python -m pip install mypy pycodestyle pylint
+        python -m pip install mypy pycodestyle pylint types-requests
         if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
     - name: Lint with pycodestyle
       run: |
+        pycodestyle --max-line-length=100 --statistics check_polkadot_release
         pycodestyle --max-line-length=100 --statistics check_polkadot_validator_active
     - name: Lint with pylint
       run: |
+        pylint check_polkadot_release
         pylint check_polkadot_validator_active
     - name: Lint with mypy
       run: |
+        mypy check_polkadot_release
         mypy check_polkadot_validator_active

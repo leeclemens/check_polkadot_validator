@@ -1,0 +1,224 @@
+#!/usr/bin/env python3
+
+"""
+Nagios/Icinga2 style check to verify the running version
+ is the same as the latest release of paritytech/polkadot
+"""
+
+import argparse
+import asyncio
+from datetime import datetime, timezone
+import sys
+import traceback
+from typing import Optional, Tuple
+
+import requests
+
+STATUS_OK = 0
+STATUS_WARNING = 1
+STATUS_CRITICAL = 2
+STATUS_UNKNOWN = 3
+
+PREFIXES = {
+    STATUS_OK: 'OK',
+    STATUS_WARNING: 'WARNING',
+    STATUS_CRITICAL: 'CRITICAL',
+    STATUS_UNKNOWN: 'UNKNOWN'
+}
+
+RETURN_VALUE = -1
+RETURN_MESSAGE = ''
+RETURN_PERF_STATS = {}
+
+PERF_SINCE_RELEASE = 'since_release'
+
+DEFAULT_RPC_SERVER = 'localhost'
+DEFAULT_RPC_PORT = 9944
+
+DEFAULT_SINCE_RELEASE_WARN = 0
+DEFAULT_SINCE_RELEASE_CRIT = 0
+
+API_ENDPOINT_LATEST_RELEASE = 'https://api.github.com/repos/paritytech/polkadot/releases/latest'
+
+SYSTEM_INFORMATION_DATA = {'id': 1, 'jsonrpc': '2.0', 'method': 'system_version'}
+RPC_HEADERS = {
+    'Content-Type': 'application/json',
+}
+
+REQUEST_TIMEOUT = 30
+
+
+def _set_return(this_return: int):
+    # pylint: disable=global-statement
+    global RETURN_VALUE
+    if this_return > RETURN_VALUE:
+        RETURN_VALUE = this_return
+
+
+def _set_message(this_msg: str):
+    # pylint: disable=global-statement
+    global RETURN_MESSAGE
+    if RETURN_MESSAGE:
+        RETURN_MESSAGE += ' '
+    RETURN_MESSAGE += this_msg
+
+
+def _update_status(this_msg: str, this_return: int):
+    """Helper function to update message and return
+    """
+    _set_message(this_msg)
+    _set_return(this_return)
+
+
+def _get_perf_since_release(args):
+    return f';{args.since_release_warn};{args.since_release_crit};0;'
+
+
+def _update_perf_stats(perf_label: str, perf_value: str):
+    RETURN_PERF_STATS[perf_label] = perf_value
+
+
+def _get_output_message() -> str:
+    return (f'{PREFIXES[RETURN_VALUE]}: {RETURN_MESSAGE}'
+            f' | {" ".join(f"{k}={v}" for k, v in RETURN_PERF_STATS.items())}')
+
+
+async def get_latest_release_tag() -> Optional[Tuple[str, str]]:
+    """Query GitHub's API for latest release tag.
+    :returns Tuple of tag_name and published_at from the latest release
+    """
+    response = requests.get(API_ENDPOINT_LATEST_RELEASE, timeout=REQUEST_TIMEOUT)
+    if response.status_code == 200:
+        release = response.json()
+        return release['tag_name'], release['published_at']
+    _update_status(
+        f'API request for latest release returned {response.status_code}: {response}',
+        STATUS_UNKNOWN)
+    return _exit()
+
+
+async def get_running_version(args) -> Optional[str]:
+    """Query running system_version from RPC.
+    """
+    # noinspection HttpUrlsUsage
+    response = requests.post(f'http://{args.server}:{args.port}',
+                             json=SYSTEM_INFORMATION_DATA,
+                             headers=RPC_HEADERS,
+                             timeout=REQUEST_TIMEOUT)
+    if response.status_code == 200:
+        version = response.json()
+        return version['result']
+    _update_status(
+        f'RPC request for running version returned {response.status_code}: {response}',
+        STATUS_UNKNOWN)
+    return _exit()
+
+
+async def check_running_latest_release(args,
+                                       latest_tag_name: str,
+                                       latest_published_at: str,
+                                       running_version: str):
+    """If the current release is not running, calculate the time since the last release
+
+    Compare Latest after dropping the first character
+     with the running version previous to the first dash
+    """
+    #  Latest: v0.9.43
+    # Running: 0.9.43-ba42b9ce51d
+    if latest_tag_name[1:] == running_version.split('-')[0]:
+        # Running latest release
+        _update_status(f'Running latest release: {running_version}',
+                       STATUS_OK)
+        # Always use 0 seconds if the latest release is running
+        _update_perf_stats(PERF_SINCE_RELEASE,
+                           f'0{_get_perf_since_release(args)}')
+    else:
+        # Not running latest release
+        since_release = (datetime.now(timezone.utc)
+                         - datetime.fromisoformat(
+                    latest_published_at[:-1]).astimezone(timezone.utc))
+        status_message = (f'Running release {running_version}'
+                          f' is older than latest release {latest_tag_name}'
+                          f' (released {since_release} ago)')
+        if since_release.total_seconds() >= args.since_release_crit:
+            _update_status(status_message, STATUS_CRITICAL)
+        elif since_release.total_seconds() >= args.since_release_warn:
+            _update_status(status_message, STATUS_WARNING)
+        _update_perf_stats(PERF_SINCE_RELEASE,
+                           f'{since_release.total_seconds()}{_get_perf_since_release(args)}')
+
+
+def _exit():
+    print(_get_output_message())
+    sys.exit(RETURN_VALUE)
+
+
+async def run(args):
+    """
+    Perform checking the running version is the latest available.
+    """
+    latest_tag_name, latest_published_at = await get_latest_release_tag()
+    assert latest_tag_name is not None
+    assert latest_published_at is not None
+    running_version = await get_running_version(args)
+    assert running_version is not None
+    if args.verbose:
+        print(f'Latest Tag Name: {latest_tag_name}.'
+              f' Published At: {latest_published_at}.'
+              f' Running Version: {running_version}.')
+    await check_running_latest_release(args,
+                                       latest_tag_name,
+                                       latest_published_at,
+                                       running_version)
+    _exit()
+
+
+def parse_args():
+    """Parse command line arguments
+    """
+    parser = argparse.ArgumentParser(
+        "This plugin checks a Polkadot/Kusama validator's version compared to the latest release.")
+    parser.add_argument('-s', '--server', type=str,
+                        required=False,
+                        dest='server',
+                        default=DEFAULT_RPC_SERVER,
+                        help=f'RPC server.'
+                             f' Default: {DEFAULT_RPC_SERVER}')
+    parser.add_argument('-p', '--port', type=int,
+                        required=False,
+                        dest='port',
+                        default=DEFAULT_RPC_PORT,
+                        help=f'RPC port to connect to.'
+                             f' Default: {DEFAULT_RPC_PORT}')
+    parser.add_argument('--since-release-warn', type=int,
+                        required=False,
+                        dest='since_release_warn',
+                        default=DEFAULT_SINCE_RELEASE_WARN,
+                        help=f'seconds since last release for warning.'
+                             f' Default: {DEFAULT_SINCE_RELEASE_WARN}')
+    parser.add_argument('--since-release-crit', type=int,
+                        required=False,
+                        dest='since_release_crit',
+                        default=DEFAULT_SINCE_RELEASE_CRIT,
+                        help=f'seconds since last release for critical.'
+                             f' Default: {DEFAULT_SINCE_RELEASE_CRIT}')
+    parser.add_argument('-v', '--verbose',
+                        dest='verbose',
+                        action='store_true',
+                        help='verbose output')
+    args = parser.parse_args()
+    if args.since_release_warn > args.since_release_crit:
+        print('Since Release seconds warning must be less than critical')
+        sys.exit(STATUS_CRITICAL)
+    return args
+
+
+if __name__ == '__main__':
+    try:
+        asyncio.run(run(parse_args()))
+    # pylint: disable=broad-except
+    except Exception as ex:
+        print(f'{sys.argv[0]}: Unhandled exception {type(ex)}')
+        print(ex)
+        traceback.print_exc()
+        sys.exit(STATUS_CRITICAL)
