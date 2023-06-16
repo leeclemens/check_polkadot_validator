@@ -71,7 +71,7 @@ Compare the latest release version with the running version.
 #### Examples
 
 ```bash
-check_polkadot_validator_active -s localhost -p 9944
+check_polkadot_release -s localhost -p 9944
 ```
 
 ##### Specify thresholds
@@ -79,7 +79,7 @@ check_polkadot_validator_active -s localhost -p 9944
 Warning after 6 hours, Critical after 24 hours since latest release.
 
 ```bash
-check_polkadot_validator_active -s localhost -p 9944 \
+check_polkadot_release -s localhost -p 9944 \
   --since-release-warn 21600 \
   --since-release-crit 86400
 ```
