@@ -28,10 +28,10 @@ This infers passage of time, so it is difficult to check idempotently.
 ## Requirements
 
 * Python 3.8+
-* PyPI websockets package
-  * pip install websockets
+* PyPI requests package
+  * pip install requests
 * Debian/Ubuntu, RedHat/CentOS/Fedora package
-  * python3-websockets
+  * python3-requests
 
 ## Check Validator is Active
 
