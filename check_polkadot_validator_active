@@ -15,14 +15,13 @@ Nagios/Icinga2 style check in an attempt to verify a validator's state in a more
 
 import argparse
 import asyncio
-import json
 import random
 import sys
 import time
 import traceback
+from typing import Optional
 
-# pylint: disable=import-error
-from websockets.client import connect as ws_connect  # type: ignore
+import requests
 
 STATUS_OK = 0
 STATUS_WARNING = 1
@@ -67,6 +66,11 @@ PERF_FINALIZED_INCREASE_TIME = 'finalized_increased'
 
 WS_MSG_METHOD_KEY = 'method'
 WS_MSG_PARAMS_KEY = 'params'
+RPC_HEADERS = {
+    'Content-Type': 'application/json',
+}
+
+REQUEST_TIMEOUT = 30
 
 MAX_BACKOFF_MS = 1500
 BASE_BACKOFF_MS = 200
@@ -125,7 +129,7 @@ def _get_output_message() -> str:
             f' | {" ".join(f"{k}={v}" for k, v in RETURN_PERF_STATS.items())}')
 
 
-def _build_ws_message(update_dict) -> dict:
+def _build_post_data(update_dict) -> dict:
     empty_msg = {
         'id': 1,
         'jsonrpc': '2.0',
@@ -136,58 +140,58 @@ def _build_ws_message(update_dict) -> dict:
     return empty_msg
 
 
-async def _connect_ws(uri: str,
-                      message_dict: dict,
-                      args,
-                      return_result_dict: bool = True) -> dict:
-    try:
-        async with ws_connect(uri) as websocket:
-            await websocket.send(json.dumps(message_dict))
-            response = await websocket.recv()
-            if args.verbose:
-                print(f'URI: {uri}. Message: {message_dict} returned {str(response)}')
-            response_dict = json.loads(response)
-            if return_result_dict:
-                return response_dict['result']
-            return response_dict
-    except OSError as os_error:
-        _update_status(str(os_error), STATUS_CRITICAL)
-        _exit()
-        # satisfy mypy
-        return {}
+async def _connect_rpc(uri: str,
+                       message_dict: dict,
+                       args,
+                       return_result_dict: bool = True) -> Optional[dict]:
+    response = requests.post(uri,
+                             json=message_dict,
+                             headers=RPC_HEADERS,
+                             timeout=REQUEST_TIMEOUT)
+    if args.verbose:
+        print(f'Request: {uri}. json: {message_dict}.'
+              f' Response: {response}. Text: {response.text}')
+    if response.status_code == 200:
+        if return_result_dict:
+            return response.json()['result']
+        return response.json()
+    _update_status(f'RPC request to uri: {uri} and message: {message_dict}'
+                   f' returned {response.status_code}: {response}',
+                   STATUS_UNKNOWN)
+    return _exit()
 
 
 async def _is_syncing(args) -> bool:
-    return (await _connect_ws(args.node_uri,
-                              _build_ws_message({WS_MSG_METHOD_KEY: 'system_health'}),
-                              args))['isSyncing']
+    return (await _connect_rpc(args.node_uri,
+                               _build_post_data({WS_MSG_METHOD_KEY: 'system_health'}),
+                               args))['isSyncing']
 
 
 async def _get_num_peers(args) -> int:
-    return (await _connect_ws(args.node_uri,
-                              _build_ws_message({WS_MSG_METHOD_KEY: 'system_health'}),
-                              args))['peers']
+    return (await _connect_rpc(args.node_uri,
+                               _build_post_data({WS_MSG_METHOD_KEY: 'system_health'}),
+                               args))['peers']
 
 
 async def _get_best_head_number(args, connect_node: bool = True) -> str:
-    return (await _connect_ws(args.node_uri if connect_node else args.compare_to_uri,
-                              _build_ws_message({WS_MSG_METHOD_KEY: 'chain_getHeader'}),
-                              args))['number']
+    return (await _connect_rpc(args.node_uri if connect_node else args.compare_to_uri,
+                               _build_post_data({WS_MSG_METHOD_KEY: 'chain_getHeader'}),
+                               args))['number']
 
 
 async def _get_finalized_head(args, connect_node: bool = True) -> str:
-    return (await _connect_ws(args.node_uri if connect_node else args.compare_to_uri,
-                              _build_ws_message({WS_MSG_METHOD_KEY: 'chain_getFinalizedHead'}),
-                              args,
-                              return_result_dict=False))['result']
+    return (await _connect_rpc(args.node_uri if connect_node else args.compare_to_uri,
+                               _build_post_data({WS_MSG_METHOD_KEY: 'chain_getFinalizedHead'}),
+                               args,
+                               return_result_dict=False))['result']
 
 
 async def _get_finalized_head_number(args, connect_node: bool = True) -> str:
     finalized_head = await _get_finalized_head(args, connect_node=connect_node)
-    return (await _connect_ws(args.node_uri if connect_node else args.compare_to_uri,
-                              _build_ws_message({WS_MSG_METHOD_KEY: 'chain_getHeader',
+    return (await _connect_rpc(args.node_uri if connect_node else args.compare_to_uri,
+                               _build_post_data({WS_MSG_METHOD_KEY: 'chain_getHeader',
                                                  WS_MSG_PARAMS_KEY: [finalized_head]}),
-                              args))['number']
+                               args))['number']
 
 
 def _calculate_block_number_distance(best_block_num: str, finalized_block_num: str) -> int:
@@ -394,7 +398,7 @@ def parse_args():
                         dest='use_tls',
                         action='store_true',
                         help='use TLS when connecting to node <server>.'
-                             ' Default: false (use ws://)')
+                             ' Default: false (use http://)')
     parser.add_argument('--warn-is-syncing',
                         dest='warn_is_syncing',
                         action='store_true',
@@ -436,7 +440,7 @@ def parse_args():
                         default=None,
                         help='node to compare best and finalized block heights to.'
                              ' Default: Use --best-timeout and --finalized-timeout'
-                             ' and connect to ws://<server>:<port>')
+                             ' and connect to http://<server>:<port>')
     parser.add_argument('--fake-increasing-perfdata',
                         dest='fake_increasing_perfdata',
                         action='store_true',
@@ -451,7 +455,7 @@ def parse_args():
         print('Max Height Distance warning must be less than critical')
         sys.exit(STATUS_CRITICAL)
     # build a full URI to use for node <server>
-    args.node_uri = f'ws{"s" if args.use_tls else ""}://{args.server}:{args.port}'
+    args.node_uri = f'http{"s" if args.use_tls else ""}://{args.server}:{args.port}'
     # check if ignored arguments are provided
     if args.compare_to_uri:
         if args.best_block_timeout != DEFAULT_BEST_INCREASE_TIMEOUT:
