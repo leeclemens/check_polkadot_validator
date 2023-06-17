@@ -164,26 +164,26 @@ async def _connect_rpc(uri: str,
 async def _is_syncing(args) -> bool:
     return (await _connect_rpc(args.node_uri,
                                _build_post_data({WS_MSG_METHOD_KEY: 'system_health'}),
-                               args))['isSyncing']
+                               args))['isSyncing']  # type: ignore
 
 
 async def _get_num_peers(args) -> int:
     return (await _connect_rpc(args.node_uri,
                                _build_post_data({WS_MSG_METHOD_KEY: 'system_health'}),
-                               args))['peers']
+                               args))['peers']  # type: ignore
 
 
 async def _get_best_head_number(args, connect_node: bool = True) -> str:
     return (await _connect_rpc(args.node_uri if connect_node else args.compare_to_uri,
                                _build_post_data({WS_MSG_METHOD_KEY: 'chain_getHeader'}),
-                               args))['number']
+                               args))['number']  # type: ignore
 
 
 async def _get_finalized_head(args, connect_node: bool = True) -> str:
     return (await _connect_rpc(args.node_uri if connect_node else args.compare_to_uri,
                                _build_post_data({WS_MSG_METHOD_KEY: 'chain_getFinalizedHead'}),
                                args,
-                               return_result_dict=False))['result']
+                               return_result_dict=False))['result']  # type: ignore
 
 
 async def _get_finalized_head_number(args, connect_node: bool = True) -> str:
@@ -191,7 +191,7 @@ async def _get_finalized_head_number(args, connect_node: bool = True) -> str:
     return (await _connect_rpc(args.node_uri if connect_node else args.compare_to_uri,
                                _build_post_data({WS_MSG_METHOD_KEY: 'chain_getHeader',
                                                  WS_MSG_PARAMS_KEY: [finalized_head]}),
-                               args))['number']
+                               args))['number']  # type: ignore
 
 
 def _calculate_block_number_distance(best_block_num: str, finalized_block_num: str) -> int:
