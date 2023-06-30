@@ -13,6 +13,7 @@ import traceback
 from typing import Optional, Tuple
 
 import requests
+from urllib3.connection import ConnectTimeoutError
 
 STATUS_OK = 0
 STATUS_WARNING = 1
@@ -87,13 +88,18 @@ async def get_latest_release_tag() -> Optional[Tuple[str, str]]:
     """Query GitHub's API for latest release tag.
     :returns Tuple of tag_name and published_at from the latest release
     """
-    response = requests.get(API_ENDPOINT_LATEST_RELEASE, timeout=REQUEST_TIMEOUT)
-    if response.status_code == 200:
-        release = response.json()
-        return release['tag_name'], release['published_at']
-    _update_status(
-        f'API request for latest release returned {response.status_code}: {response}',
-        STATUS_UNKNOWN)
+    try:
+        response = requests.get(API_ENDPOINT_LATEST_RELEASE, timeout=REQUEST_TIMEOUT)
+        if response.status_code == 200:
+            release = response.json()
+            return release['tag_name'], release['published_at']
+        _update_status(
+            f'API request for latest release returned {response.status_code}: {response}',
+            STATUS_UNKNOWN)
+    except ConnectTimeoutError as cte:
+        _update_status(
+            f'API request for latest release to {API_ENDPOINT_LATEST_RELEASE} timed out: {cte}',
+            STATUS_UNKNOWN)
     return _exit()
 
 
