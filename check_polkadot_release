@@ -140,9 +140,10 @@ async def check_running_latest_release(args,
                            f'0{_get_perf_since_release(args)}')
     else:
         # Not running latest release
-        since_release = (datetime.now(timezone.utc)
-                         - datetime.fromisoformat(
-                    latest_published_at[:-1]).astimezone(timezone.utc))
+        release_datetime = datetime.fromtimestamp(datetime.fromisoformat(
+            latest_published_at.replace('Z', '+00:00')).timestamp(), tz=timezone.utc)
+        now_datetime = datetime.now(timezone.utc).astimezone(timezone.utc)
+        since_release = now_datetime - release_datetime
         status_message = (f'Running release {running_version}'
                           f' is older than latest release {latest_tag_name}'
                           f' (released {since_release} ago)')
