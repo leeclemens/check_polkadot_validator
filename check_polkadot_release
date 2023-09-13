@@ -39,7 +39,7 @@ DEFAULT_RPC_PORT = 9944
 DEFAULT_SINCE_RELEASE_WARN = 0
 DEFAULT_SINCE_RELEASE_CRIT = 0
 
-API_ENDPOINT_LATEST_RELEASE = 'https://api.github.com/repos/paritytech/polkadot/releases/latest'
+API_ENDPOINT_LATEST_RELEASE = 'https://api.github.com/repos/paritytech/polkadot-sdk/releases/latest'
 
 SYSTEM_INFORMATION_DATA = {'id': 1, 'jsonrpc': '2.0', 'method': 'system_version'}
 RPC_HEADERS = {
