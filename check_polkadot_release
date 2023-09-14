@@ -129,9 +129,9 @@ async def check_running_latest_release(args,
     Compare Latest after dropping the first character
      with the running version previous to the first dash
     """
-    #  Latest: v0.9.43
+    #  Latest: polkadot-v0.9.43
     # Running: 0.9.43-ba42b9ce51d
-    if latest_tag_name[1:] == running_version.split('-')[0]:
+    if latest_tag_name.split('-')[1][1:] == running_version.split('-')[0]:
         # Running latest release
         _update_status(f'Running latest release: {running_version}',
                        STATUS_OK)
